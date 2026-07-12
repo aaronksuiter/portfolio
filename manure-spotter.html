@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manure Spotter — Aaron Suiter</title>
+<meta name="description" content="An open Google Earth Engine tool for detecting livestock-waste applications on snow-covered cropland using free satellite imagery.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <nav class="nav">
+    <div class="brand"><a href="index.html">Aaron Suiter</a></div>
+    <ul class="nav-links">
+      <li><a href="index.html">Work</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="contact.html">Contact</a></li>
+    </ul>
+  </nav>
+</header>
+
+<article class="detail">
+  <p class="breadcrumb"><a href="index.html">← All work</a></p>
+  <div class="tag">Remote Sensing · Data Science · Environmental Monitoring</div>
+  <h1>Manure Spotter</h1>
+  <p class="meta">Google Earth Engine · Sentinel-2 &amp; Landsat-8/9 · Python · Published open access in <a href="https://doi.org/10.1016/j.rsase.2026.102141"><em>Remote Sensing Applications: Society and Environment</em></a> (2026), with Pouyan Hatami and Song Gao</p>
+
+  <div class="btns">
+    <a class="btn primary" href="https://doi.org/10.1016/j.rsase.2026.102141">Read the open-access article</a>
+    <a class="btn" href="https://github.com/aaronksuiter/manure-spotter">View the code on GitHub</a>
+  </div>
+
+  <p>Spreading livestock waste on frozen or snow-covered ground is one of the highest-risk moments in the agricultural calendar for water quality: frozen soils block infiltration, dormant crops take up little of the nutrients, and snowmelt can carry manure straight into streams and wells. Yet no free tool existed to let regulators, nonprofits, or citizens actually watch for it. Enforcement mostly relied on the operations reporting on themselves.</p>
+
+  <figure>
+    <img src="assets/manure-spray.jpg" alt="Manure spread in dark streaks across a snow-covered field">
+    <figcaption>Livestock waste spread across a snow-covered field—visible from the ground, and, with this workflow, from space.</figcaption>
+  </figure>
+
+  <p>Manure Spotter is my answer to that gap—an open, reproducible workflow in Google Earth Engine that maps waste applications on snow using freely available Sentinel-2 and Landsat-8/9 imagery. It was built and validated across three Wisconsin regions during the January–February 2025 spreading season and published in <em>Remote Sensing Applications: Society and Environment</em>.</p>
+
+  <h2>How it works</h2>
+  <p>For each target date, the workflow pulls whatever Sentinel-2 or Landsat-8/9 imagery is available and first masks out everything it shouldn’t judge—clouds and cloud shadow, snow-free ground, and non-cropland—so the classifier only ever considers pixels where a spread could plausibly be seen. Only then does it classify the surface, and finally clean and vectorize the flagged pixels into discrete, dated “spread” polygons, merging overlapping detections and dropping noise—alongside an audit raster and optional image chips an investigator can eyeball before a site visit. The full daily logic looks like this:</p>
+
+  <figure>
+    <img src="assets/manure-workflow.jpg" alt="Flowchart of the daily image-processing pipeline">
+    <figcaption>The daily processing logic: whichever of Sentinel-2 or Landsat-8/9 is available is masked, then classified across the observable domain and vectorized into detection polygons.</figcaption>
+  </figure>
+
+  <p>At the heart of that pipeline is the classification step. Within the masked, observable area, the model distinguishes the spectral signature of freshly applied waste from the surrounding snow, flagging candidate manure one pixel at a time—then step-by-step rules turn those pixels into the discrete spreads an investigator can act on.</p>
+
+  <div class="figrow">
+    <figure>
+      <img src="assets/manure-model-pixels.jpg" alt="Sparse white pixels on a black field where the model detects manure">
+      <figcaption>The AI model “sees” manure as these white pixels.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/manure-spreads.jpg" alt="Detected manure spreads outlined in green on an aerial view of farmland">
+      <figcaption>Step-by-step instructions tell the model how to convert manure pixels to discrete spreads.</figcaption>
+    </figure>
+  </div>
+
+  <h2>Results</h2>
+  <p>Within the observable domain, the classifier achieved high precision (0.990, 95% CI 0.977–1.000) and recall (0.942, 95% CI 0.934–0.949) for the livestock-waste class, measured with a rigorous design-based, pixel-day accuracy assessment. Just as important, the workflow is honest about <em>when</em> it can see: it tracks how many days each area is actually “validatable” given clouds and snow, rather than pretending to full coverage.</p>
+
+  <figure>
+    <img src="assets/manure-validatable.jpg" alt="Maps showing the number of validatable days across the study regions">
+    <figcaption>Validatable days across the study regions—how often conditions actually permitted a confident observation.</figcaption>
+  </figure>
+
+  <h2>Why it matters</h2>
+  <p>The outputs are designed for real use: vectorized spread polygons and image chips that support complaint triage and targeted site visits, built entirely on free imagery and open code so that a state agency or a small watershed nonprofit could run it without a satellite budget. It’s a concrete example of what I care about most—turning public data into a tool that lets people hold environmental risks up to the light.</p>
+
+  <div class="callout">
+    <strong>My role:</strong> lead author and developer. I designed the workflow, assembled the training and validation data, wrote the Google Earth Engine / Python codebase, and led the accuracy assessment and manuscript.
+  </div>
+
+  <div class="btns">
+    <a class="btn" href="index.html">← Back to all work</a>
+  </div>
+</article>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <span>© 2026 Aaron Suiter</span>
+    <span><a href="https://plantpropagationproject.substack.com/">Substack</a> · <a href="mailto:aks1292@gmail.com">Email</a></span>
+  </div>
+</footer>
+
+</body>
+</html>
