@@ -22,7 +22,7 @@
 
 <article class="detail">
   <p class="breadcrumb"><a href="index.html">← All work</a></p>
-  <div class="tag">Remote Sensing · Data Science · Environmental Monitoring</div>
+  <div class="tag">Geospatial Data Science · Remote Sensing · Environmental Monitoring</div>
   <h1>Manure Spotter</h1>
   <p class="meta">Google Earth Engine · Sentinel-2 &amp; Landsat-8/9 · Python · Published open access in <a href="https://doi.org/10.1016/j.rsase.2026.102141"><em>Remote Sensing Applications: Society and Environment</em></a> (2026), with Pouyan Hatami and Song Gao</p>
 
@@ -31,17 +31,17 @@
     <a class="btn" href="https://github.com/aaronksuiter/manure-spotter">View the code on GitHub</a>
   </div>
 
-  <p>Spreading livestock waste on frozen or snow-covered ground is one of the highest-risk moments in the agricultural calendar for water quality: frozen soils block infiltration, dormant crops take up little of the nutrients, and snowmelt can carry manure straight into streams and wells. Yet no free tool existed to let regulators, nonprofits, or citizens actually watch for it. Enforcement mostly relied on the operations reporting on themselves.</p>
+  <p>Spreading livestock waste on frozen or snow-covered ground can be hazardous to water quality: frozen soils block infiltration, dormant (or non-existent) crops take up little of the nutrients, and snowmelt can carry manure off of fields and into surface waters. Yet no free tool existed to let regulators, nonprofits, or citizens actually watch for it, and enforcement mostly relied on the operations self-reporting their own violations.</p>
 
   <figure>
     <img src="assets/manure-spray.jpg" alt="Manure spread in dark streaks across a snow-covered field">
     <figcaption>Livestock waste spread across a snow-covered field—visible from the ground, and, with this workflow, from space.</figcaption>
   </figure>
 
-  <p>Manure Spotter is my answer to that gap—an open, reproducible workflow in Google Earth Engine that maps waste applications on snow using freely available Sentinel-2 and Landsat-8/9 imagery. It was built and validated across three Wisconsin regions during the January–February 2025 spreading season and published in <em>Remote Sensing Applications: Society and Environment</em>.</p>
+  <p>Manure Spotter is my answer to that lacuna; it’s an open-source, reproducible Python workflow in Google Earth Engine that maps waste applications on snow using freely available Sentinel-2 and Landsat-8/9 imagery. It was built and validated across three Wisconsin regions during the January–February 2025 spreading season and published in <em>Remote Sensing Applications: Society and Environment</em>.</p>
 
   <h2>How it works</h2>
-  <p>For each target date, the workflow pulls whatever Sentinel-2 or Landsat-8/9 imagery is available and first masks out everything it shouldn’t judge—clouds and cloud shadow, snow-free ground, and non-cropland—so the classifier only ever considers pixels where a spread could plausibly be seen. Only then does it classify the surface, and finally clean and vectorize the flagged pixels into discrete, dated “spread” polygons, merging overlapping detections and dropping noise—alongside an audit raster and optional image chips an investigator can eyeball before a site visit. The full daily logic looks like this:</p>
+  <p>For each target date, the workflow pulls whatever Sentinel-2 or Landsat-8/9 imagery is available and first masks out everything it shouldn’t judge—clouds and cloud shadows, snow-free ground, and non-cropland—so the classifier only ever considers pixels where a spread could plausibly be seen. Only then does it classify the surface, and finally clean and vectorize the flagged pixels into discrete, dated spread polygons, merging overlapping detections and dropping noise—alongside image chips that users can eyeball before a site visit. The full daily logic looks like this:</p>
 
   <figure>
     <img src="assets/manure-workflow.jpg" alt="Flowchart of the daily image-processing pipeline">
@@ -70,11 +70,9 @@
   </figure>
 
   <h2>Why it matters</h2>
-  <p>The outputs are designed for real use: vectorized spread polygons and image chips that support complaint triage and targeted site visits, built entirely on free imagery and open code so that a state agency or a small watershed nonprofit could run it without a satellite budget. It’s a concrete example of what I care about most—turning public data into a tool that lets people hold environmental risks up to the light.</p>
+  <p>The outputs are designed for real use: vectorized spread polygons and image chips that support complaint triage and targeted site visits, built entirely on free imagery and open code so that a state agency or a small watershed nonprofit could run it without needing to allocate any additional funding.</p>
 
-  <div class="callout">
-    <strong>My role:</strong> lead author and developer. I designed the workflow, assembled the training and validation data, wrote the Google Earth Engine / Python codebase, and led the accuracy assessment and manuscript.
-  </div>
+  <div class="callout"><strong>My role:</strong> lead author and developer. I designed the workflow, assembled the training and validation data, wrote the Google Earth Engine / Python codebase, and led the accuracy assessment and manuscript.</div>
 
   <div class="btns">
     <a class="btn" href="index.html">← Back to all work</a>
@@ -84,7 +82,7 @@
 <footer class="site-footer">
   <div class="footer-inner">
     <span>© 2026 Aaron Suiter</span>
-    <span><a href="https://plantpropagationproject.substack.com/">Substack</a> · <a href="mailto:aks1292@gmail.com">Email</a></span>
+    <span><a href="https://plantpropagationproject.substack.com/">Substack</a> · <a href="mailto:plantpropagationproject@gmail.com">Email</a></span>
   </div>
 </footer>
 

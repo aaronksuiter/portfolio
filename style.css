@@ -66,7 +66,7 @@ a:hover{color:var(--gold-dk);text-decoration:underline;text-underline-offset:2px
 .work .view{font-size:.7rem;text-transform:uppercase;letter-spacing:.12em;color:var(--gold)}
 .work .view::after{content:"\00a0\2192"}
 .work-media{min-width:0}
-.work-figure{display:block;overflow:hidden;margin:0;border:1px solid var(--line)}
+.work-figure{display:block;overflow:hidden;margin:0}
 .work-figure img{width:100%;height:auto;display:block;filter:saturate(.94);transition:transform .6s ease}
 .work-figure:hover img{transform:scale(1.03)}
 .work-credit{display:block;margin-top:8px;font-size:.72rem;color:var(--muted);letter-spacing:.02em}
