@@ -99,6 +99,9 @@ a:hover{color:var(--gold-dk);text-decoration:underline;text-underline-offset:2px
 .prose p{font-size:1.2rem;line-height:1.5}.prose .lead{font-size:1.32rem;line-height:1.45;color:var(--muted);font-style:italic}
 .contact-list{list-style:none;padding:0;font-size:1.16rem}.contact-list li{margin-bottom:18px}
 .contact-list .lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:400;display:block;margin-bottom:3px}
+.publications{list-style:none;padding:0;margin:0}
+.publications li{margin-bottom:18px;line-height:1.5}
+.publications .pub-meta{display:block;margin-top:3px;color:var(--muted);font-size:.92rem}
 .site-footer{border-top:1px solid var(--ink);background:none;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.09em}
 .footer-inner{max-width:var(--maxw);margin:0 auto;padding:28px;display:flex;flex-wrap:wrap;gap:10px 24px;justify-content:space-between}
 .footer-inner a{color:var(--muted)}.footer-inner a:hover{color:var(--ink)}
