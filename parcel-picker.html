@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parcel Picker</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1d1d1f; --muted: #6b6b70; --border: #d9d9de;
+    --accent: #0a66c2; --accent-fg: #ffffff; --sel: #ffcc00; --panel: #f7f7f9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1b1b1e; --fg: #ececf0; --muted: #a0a0a8; --border: #3a3a40;
+      --accent: #4b9bff; --accent-fg: #0b0b0c; --panel: #232327;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  #app { display: flex; height: 100%; }
+  #map { flex: 1; min-width: 0; }
+  #side { width: 340px; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--panel); }
+  @media (max-width: 760px) {
+    #app { flex-direction: column; }
+    #side { width: 100%; height: 45%; border-left: 0; border-top: 1px solid var(--border); }
+  }
+  header { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 16px; margin: 0 0 8px; }
+  form { display: flex; gap: 6px; }
+  input[type=text] { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
+  button { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  #status { color: var(--muted); font-size: 12px; margin-top: 8px; min-height: 1.4em; }
+  #totals { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .big { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .sub { color: var(--muted); font-size: 12px; }
+  .row { display: flex; gap: 6px; margin-top: 10px; }
+  .row button { flex: 1; white-space: nowrap; padding-left: 6px; padding-right: 6px; }
+  #list { flex: 1; overflow: auto; padding: 4px 0; margin: 0; list-style: none; }
+  #list li { padding: 8px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: start; }
+  #list li .info { flex: 1; min-width: 0; }
+  #list li .owner { font-weight: 600; overflow-wrap: anywhere; }
+  #list li button { padding: 2px 8px; font-size: 12px; }
+  #list .empty { color: var(--muted); border: 0; }
+  .leaflet-popup-content { font-size: 13px; }
+  .owner-label { pointer-events: none; }
+  .owner-label div {
+    transform: translate(-50%, -50%); width: max-content; text-align: center;
+    color: #fff; font: 600 11px/1.15 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    text-shadow: 0 0 2px #000, 0 0 3px #000, 0 0 4px #000; white-space: normal; overflow-wrap: anywhere;
+  }
+  .owner-label.sel div { color: #ffe066; }
+  .toggle { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .leaflet-popup-content table td:first-child { color: #666; padding-right: 8px; white-space: nowrap; }
+  footer { padding: 8px 16px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <aside id="side">
+    <header>
+      <h1>Parcel Picker</h1>
+      <form id="search">
+        <input id="q" type="text" placeholder="Address, e.g. 210 Martin Luther King Jr Blvd, Madison" autocomplete="off">
+        <button class="primary" type="submit">Go</button>
+      </form>
+      <label class="toggle"><input type="checkbox" id="labels-on" checked> Show owner names on map</label>
+      <div id="status">Zoom in to load parcels. Click a parcel to select it.</div>
+    </header>
+    <section id="totals">
+      <div class="big" id="acres">0.00 ac</div>
+      <div class="sub" id="acres-sub">0 parcels selected · GIS area (calculated from shapes)</div>
+      <div class="sub" id="deed-sub"></div>
+      <div class="row">
+        <button class="primary" id="export-gpkg" disabled>Export .gpkg</button>
+        <button id="export" disabled>GeoJSON</button>
+        <button id="clear" disabled>Clear</button>
+      </div>
+    </section>
+    <ul id="list"><li class="empty">No parcels selected yet.</li></ul>
+    <footer>Parcels: Wisconsin Statewide Parcel Map (V12, tax roll 2025), queried live. Imagery: Esri World Imagery. Not a survey.</footer>
+  </aside>
+</div>
+
+<script>
+const PARCELS_URL = "https://services3.arcgis.com/n6uYoouQZW75n5WI/arcgis/rest/services/Wisconsin_Statewide_Parcels_DB/FeatureServer/0/query";
+const GEOCODE_URL = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates";
+const FIELDS = ["STATEID","PARCELID","OWNERNME1","OWNERNME2","PSTLADRESS","SITEADRESS","PLACENAME","CONAME",
+  "GISACRES","DEEDACRES","ASSDACRES","PROPCLASS","CNTASSDVALUE","TAXROLLYEAR","PARCELDATE"];
+const MIN_ZOOM = 15;
+const LABEL_MIN_PX = 40; // hide a label when its parcel is narrower or shorter than this on screen
+const SQM_PER_ACRE = 4046.8564224;
+
+const map = L.map("map", { zoomControl: true }).setView([43.0731, -89.4012], 14); // Madison
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+  maxZoom: 20, maxNativeZoom: 19, attribution: "Imagery © Esri, Maxar, Earthstar Geographics"
+}).addTo(map);
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}", {
+  maxZoom: 20, maxNativeZoom: 19, opacity: 0.7
+}).addTo(map);
+
+const $ = id => document.getElementById(id);
+const status = msg => { $("status").textContent = msg; };
+
+const selected = new Map();   // id -> GeoJSON feature
+const layersById = new Map(); // id -> Leaflet layer currently on map
+let pin = null;
+let loadToken = 0;
+
+const fid = f => f.properties.STATEID || f.properties.PARCELID || JSON.stringify(f.geometry.coordinates[0]?.[0]);
+const baseStyle = { color: "#ffffff", weight: 1.2, fillOpacity: 0.04, fillColor: "#ffffff" };
+const selStyle  = { color: "#ffcc00", weight: 3, fillOpacity: 0.35, fillColor: "#ffcc00" };
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const gisAcres = f => turf.area(f) / SQM_PER_ACRE;
+// Deeded acres where the county publishes them (most do); assessed acres otherwise (e.g. Iowa, Green).
+const recordedAcres = p => p.DEEDACRES != null ? Number(p.DEEDACRES) : p.ASSDACRES != null ? Number(p.ASSDACRES) : null;
+const fmt = (n, d = 2) => n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+
+// The statewide layer fills gaps between parcels with placeholder shapes (road right-of-way, water, rail...).
+// Some are tens of thousands of acres; skip them unless they carry an owner name.
+const PLACEHOLDER_IDS = new Set(["ROW", "HYDRO", "OVERLAP", "GAP", "UNKNOWN", "WATER", "RAIL", "RR", "LAKE", "RIVER", "ROAD"]);
+const isPlaceholder = p => PLACEHOLDER_IDS.has(String(p.PARCELID ?? "").toUpperCase()) && !p.OWNERNME1;
+
+const parcelLayer = L.geoJSON(null, {
+  filter: f => !isPlaceholder(f.properties),
+  style: f => selected.has(fid(f)) ? selStyle : baseStyle,
+  onEachFeature: (f, layer) => {
+    layersById.set(fid(f), layer);
+    layer.on("click", e => { L.DomEvent.stopPropagation(e); toggle(f, e.latlng); });
+    layer.on("mouseover", () => { if (!selected.has(fid(f))) layer.setStyle({ weight: 2.5 }); });
+    layer.on("mouseout",  () => layer.setStyle(selected.has(fid(f)) ? selStyle : baseStyle));
+  }
+}).addTo(map);
+
+// ---------- Owner-name labels ----------
+const labelLayer = L.layerGroup().addTo(map);
+const labelAnchor = new Map(); // id -> [lat, lng] inside the parcel (computed once per load)
+
+function ownerText(p) {
+  return p.OWNERNME1 ? (p.OWNERNME2 ? `${p.OWNERNME1} +` : p.OWNERNME1) : "";
+}
+
+function renderLabels() {
+  labelLayer.clearLayers();
+  if (!$("labels-on").checked) return;
+  const view = map.getBounds();
+  parcelLayer.eachLayer(layer => {
+    const f = layer.feature, id = fid(f), text = ownerText(f.properties);
+    if (!text) return;
+    const b = layer.getBounds();
+    if (!view.intersects(b)) return;
+    const nw = map.latLngToContainerPoint(b.getNorthWest()), se = map.latLngToContainerPoint(b.getSouthEast());
+    const w = se.x - nw.x, h = se.y - nw.y;
+    if (w < LABEL_MIN_PX || h < LABEL_MIN_PX / 2) return; // too small on screen to label cleanly
+    let at = labelAnchor.get(id);
+    if (!at) { const c = turf.pointOnFeature(f).geometry.coordinates; at = [c[1], c[0]]; labelAnchor.set(id, at); }
+    const maxW = Math.max(60, Math.min(w * 0.9, 180));
+    L.marker(at, {
+      interactive: false, keyboard: false,
+      icon: L.divIcon({ className: `owner-label${selected.has(id) ? " sel" : ""}`, iconSize: [0, 0],
+        html: `<div style="max-width:${Math.round(maxW)}px">${esc(text)}</div>` })
+    }).addTo(labelLayer);
+  });
+}
+$("labels-on").addEventListener("change", renderLabels);
+map.on("zoomend", renderLabels);
+
+function popupHtml(f) {
+  const p = f.properties;
+  const ll = turf.centroid(f).geometry.coordinates;
+  const sv = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll[1]},${ll[0]}`;
+  const rows = [
+    ["Owner", [p.OWNERNME1, p.OWNERNME2].filter(Boolean).join(" / ")],
+    ["Site address", p.SITEADRESS], ["Municipality", p.PLACENAME], ["County", p.CONAME], ["Parcel ID", p.PARCELID],
+    ["GIS acres (calc.)", fmt(gisAcres(f), 3)], ["Deeded acres", p.DEEDACRES], ["Assessed acres", p.ASSDACRES],
+    ["Assessed value", p.CNTASSDVALUE != null ? "$" + Number(p.CNTASSDVALUE).toLocaleString() : null],
+    ["Tax roll year", p.TAXROLLYEAR]
+  ].filter(r => r[1] != null && r[1] !== "");
+  return `<table>${rows.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join("")}</table>
+    <div style="margin-top:6px"><a href="${sv}" target="_blank" rel="noopener">Open Street View here ↗</a></div>`;
+}
+
+function toggle(f, latlng) {
+  const id = fid(f);
+  if (selected.has(id)) selected.delete(id); else selected.set(id, f);
+  const layer = layersById.get(id);
+  if (layer) layer.setStyle(selected.has(id) ? selStyle : baseStyle);
+  if (latlng) L.popup().setLatLng(latlng).setContent(popupHtml(f)).openOn(map);
+  render();
+  renderLabels();
+}
+
+function render() {
+  const feats = [...selected.values()];
+  const total = feats.reduce((s, f) => s + gisAcres(f), 0);
+  const recKnown = feats.filter(f => recordedAcres(f.properties) != null);
+  const recTotal = recKnown.reduce((s, f) => s + recordedAcres(f.properties), 0);
+  const usedAssd = recKnown.some(f => f.properties.DEEDACRES == null);
+  $("acres").textContent = `${fmt(total)} ac`;
+  $("acres-sub").textContent = `${feats.length} parcel${feats.length === 1 ? "" : "s"} selected · GIS area (calculated from shapes)`;
+  $("deed-sub").textContent = feats.length
+    ? `On record: ${fmt(recTotal)} ac (${usedAssd ? "deeded, or assessed where no deeded value" : "deeded"})` +
+      (recKnown.length < feats.length ? ` · ${feats.length - recKnown.length} parcel(s) have no recorded acreage` : "")
+    : "";
+  $("export").disabled = $("export-gpkg").disabled = $("clear").disabled = feats.length === 0;
+  const list = $("list");
+  list.innerHTML = feats.length ? "" : `<li class="empty">No parcels selected yet.</li>`;
+  for (const f of feats) {
+    const p = f.properties, li = document.createElement("li");
+    li.innerHTML = `<div class="info"><div class="owner">${esc(p.OWNERNME1 || "Owner not listed")}</div>
+      <div class="sub">${esc(p.SITEADRESS || "No site address")} · ${esc(p.PARCELID || "")}</div>
+      <div class="sub">${esc(p.CONAME ? p.CONAME[0] + p.CONAME.slice(1).toLowerCase() + " Co. · " : "")}${fmt(gisAcres(f), 3)} ac GIS${
+        p.DEEDACRES != null ? ` · ${esc(p.DEEDACRES)} ac deeded` : p.ASSDACRES != null ? ` · ${esc(p.ASSDACRES)} ac assessed` : ""}</div></div>`;
+    const zoom = document.createElement("button"); zoom.textContent = "Zoom";
+    zoom.onclick = () => map.fitBounds(L.geoJSON(f).getBounds(), { maxZoom: 18 });
+    const rm = document.createElement("button"); rm.textContent = "✕"; rm.title = "Remove";
+    rm.onclick = () => toggle(f);
+    li.append(zoom, rm); list.append(li);
+  }
+}
+
+async function loadParcels() {
+  const token = ++loadToken;
+  if (map.getZoom() < MIN_ZOOM) {
+    parcelLayer.clearLayers(); layersById.clear(); labelLayer.clearLayers();
+    status(`Zoom in closer to load parcels (level ${MIN_ZOOM}+, now ${map.getZoom()}).`);
+    return;
+  }
+  const b = map.getBounds();
+  const params = new URLSearchParams({
+    geometry: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(","),
+    geometryType: "esriGeometryEnvelope", inSR: "4326", spatialRel: "esriSpatialRelIntersects",
+    outFields: FIELDS.join(","), outSR: "4326", f: "geojson", resultRecordCount: "2000"
+  });
+  status("Loading parcels…");
+  try {
+    const res = await fetch(`${PARCELS_URL}?${params}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const gj = await res.json();
+    if (gj.error) throw new Error(gj.error.message || "Service error");
+    if (token !== loadToken) return; // a newer request superseded this one
+    parcelLayer.clearLayers(); layersById.clear(); labelAnchor.clear();
+    parcelLayer.addData(gj);
+    renderLabels();
+    const n = parcelLayer.getLayers().length;
+    status(n ? `${n} parcels in view${gj.properties?.exceededTransferLimit ? " (limit reached, zoom in for all)" : ""}. Click to select.`
+             : "No parcels here.");
+  } catch (err) {
+    if (token === loadToken) status(`Could not load parcels: ${err.message}`);
+  }
+}
+
+let debounce;
+map.on("moveend", () => { clearTimeout(debounce); debounce = setTimeout(loadParcels, 250); });
+
+$("search").addEventListener("submit", async e => {
+  e.preventDefault();
+  const q = $("q").value.trim();
+  if (!q) return;
+  status("Finding address…");
+  const params = new URLSearchParams({ SingleLine: q, maxLocations: "1", outFields: "Match_addr",
+    location: "-89.4012,43.0731", countryCode: "USA", f: "json" });
+  try {
+    const res = await fetch(`${GEOCODE_URL}?${params}`);
+    const data = await res.json();
+    const c = data.candidates?.[0];
+    if (!c) { status("Address not found. Try adding the city."); return; }
+    const ll = [c.location.y, c.location.x];
+    if (pin) pin.remove();
+    pin = L.marker(ll).addTo(map).bindTooltip(c.address, { direction: "top" });
+    map.setView(ll, 16);
+    status(`Found: ${c.address}`);
+  } catch (err) { status(`Search failed: ${err.message}`); }
+});
+
+$("clear").onclick = () => {
+  selected.clear();
+  parcelLayer.eachLayer(l => l.setStyle(baseStyle));
+  render();
+  renderLabels();
+};
+
+const exportFeatures = () => [...selected.values()].map(f => ({
+  type: "Feature",
+  geometry: f.geometry,
+  properties: { ...f.properties, GIS_ACRES_CALC: Number(gisAcres(f).toFixed(4)) }
+}));
+const fileStem = () => `selected_parcels_${new Date().toISOString().slice(0, 10)}`;
+
+function download(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+$("export").onclick = () => {
+  const fc = { type: "FeatureCollection", name: "selected_parcels",
+    crs: { type: "name", properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" } }, features: exportFeatures() };
+  download(new Blob([JSON.stringify(fc)], { type: "application/geo+json" }), `${fileStem()}.geojson`);
+};
+
+// ---------- GeoPackage writer (OGC GeoPackage 1.4, written in the browser with SQLite/sql.js) ----------
+let sqlPromise;
+const loadSql = () => sqlPromise ??= initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}` });
+
+const NUMERIC_FIELDS = new Set(["GISACRES", "DEEDACRES", "ASSDACRES", "CNTASSDVALUE", "GIS_ACRES_CALC"]);
+const WGS84_WKT = 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]';
+
+// GeoPackage geometry blob: "GP" header + envelope + little-endian WKB MultiPolygon.
+function gpkgGeom(geometry, srsId) {
+  const polys = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+  let nPts = 0, nRings = 0;
+  for (const poly of polys) for (const ring of poly) { nRings++; nPts += ring.length; }
+  const wkbLen = 1 + 4 + 4 + polys.length * (1 + 4 + 4) + nRings * 4 + nPts * 16;
+  const buf = new ArrayBuffer(8 + 32 + wkbLen), v = new DataView(buf);
+  let o = 0;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const poly of polys) for (const ring of poly) for (const [x, y] of ring) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  v.setUint8(o++, 0x47); v.setUint8(o++, 0x50);       // "GP"
+  v.setUint8(o++, 0);                                  // version 1
+  v.setUint8(o++, 0b00000011);                         // envelope [minx,maxx,miny,maxy], little-endian
+  v.setInt32(o, srsId, true); o += 4;
+  for (const n of [minX, maxX, minY, maxY]) { v.setFloat64(o, n, true); o += 8; }
+  v.setUint8(o++, 1); v.setUint32(o, 6, true); o += 4; // WKB MultiPolygon
+  v.setUint32(o, polys.length, true); o += 4;
+  for (const poly of polys) {
+    v.setUint8(o++, 1); v.setUint32(o, 3, true); o += 4; // Polygon
+    v.setUint32(o, poly.length, true); o += 4;
+    for (const ring of poly) {
+      v.setUint32(o, ring.length, true); o += 4;
+      for (const [x, y] of ring) { v.setFloat64(o, x, true); v.setFloat64(o + 8, y, true); o += 16; }
+    }
+  }
+  return { bytes: new Uint8Array(buf), env: [minX, maxX, minY, maxY] };
+}
+
+async function buildGpkg(features) {
+  const SQL = await loadSql();
+  const db = new SQL.Database();
+  const table = "selected_parcels";
+  const fields = [...new Set(features.flatMap(f => Object.keys(f.properties)))];
+  const q = s => `"${s.replace(/"/g, '""')}"`;
+  db.run(`PRAGMA application_id = 1196444487; PRAGMA user_version = 10400;`);
+  db.run(`
+    CREATE TABLE gpkg_spatial_ref_sys (srs_name TEXT NOT NULL, srs_id INTEGER PRIMARY KEY, organization TEXT NOT NULL,
+      organization_coordsys_id INTEGER NOT NULL, definition TEXT NOT NULL, description TEXT);
+    CREATE TABLE gpkg_contents (table_name TEXT NOT NULL PRIMARY KEY, data_type TEXT NOT NULL, identifier TEXT UNIQUE,
+      description TEXT DEFAULT '', last_change DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      min_x DOUBLE, min_y DOUBLE, max_x DOUBLE, max_y DOUBLE, srs_id INTEGER,
+      CONSTRAINT fk_gc_r_srs_id FOREIGN KEY (srs_id) REFERENCES gpkg_spatial_ref_sys(srs_id));
+    CREATE TABLE gpkg_geometry_columns (table_name TEXT NOT NULL, column_name TEXT NOT NULL, geometry_type_name TEXT NOT NULL,
+      srs_id INTEGER NOT NULL, z TINYINT NOT NULL, m TINYINT NOT NULL,
+      CONSTRAINT pk_geom_cols PRIMARY KEY (table_name, column_name),
+      CONSTRAINT fk_gc_tn FOREIGN KEY (table_name) REFERENCES gpkg_contents(table_name),
+      CONSTRAINT fk_gc_srs FOREIGN KEY (srs_id) REFERENCES gpkg_spatial_ref_sys(srs_id));
+    INSERT INTO gpkg_spatial_ref_sys VALUES
+      ('Undefined cartesian SRS', -1, 'NONE', -1, 'undefined', 'undefined cartesian coordinate reference system'),
+      ('Undefined geographic SRS', 0, 'NONE', 0, 'undefined', 'undefined geographic coordinate reference system');`);
+  db.run(`INSERT INTO gpkg_spatial_ref_sys VALUES ('WGS 84 geodetic', 4326, 'EPSG', 4326, ?, 'longitude/latitude coordinates in decimal degrees on the WGS 84 spheroid')`, [WGS84_WKT]);
+  db.run(`CREATE TABLE ${q(table)} (fid INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, geom MULTIPOLYGON, ${
+    fields.map(f => `${q(f)} ${NUMERIC_FIELDS.has(f) ? "REAL" : "TEXT"}`).join(", ")})`);
+  const ins = db.prepare(`INSERT INTO ${q(table)} (geom, ${fields.map(q).join(", ")}) VALUES (?, ${fields.map(() => "?").join(", ")})`);
+  let ext = [Infinity, -Infinity, Infinity, -Infinity];
+  for (const f of features) {
+    const g = gpkgGeom(f.geometry, 4326);
+    ext = [Math.min(ext[0], g.env[0]), Math.max(ext[1], g.env[1]), Math.min(ext[2], g.env[2]), Math.max(ext[3], g.env[3])];
+    ins.run([g.bytes, ...fields.map(k => {
+      const val = f.properties[k];
+      if (val == null) return null;
+      return NUMERIC_FIELDS.has(k) ? Number(val) : String(val);
+    })]);
+  }
+  ins.free();
+  db.run(`INSERT INTO gpkg_contents (table_name, data_type, identifier, description, min_x, min_y, max_x, max_y, srs_id)
+          VALUES (?, 'features', ?, 'Parcels selected in Parcel Picker', ?, ?, ?, ?, 4326)`,
+         [table, table, ext[0], ext[2], ext[1], ext[3]]);
+  db.run(`INSERT INTO gpkg_geometry_columns VALUES (?, 'geom', 'MULTIPOLYGON', 4326, 0, 0)`, [table]);
+  const bytes = db.export();
+  db.close();
+  return bytes;
+}
+
+$("export-gpkg").onclick = async () => {
+  const btn = $("export-gpkg"), label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Building…";
+  try {
+    const bytes = await buildGpkg(exportFeatures());
+    download(new Blob([bytes], { type: "application/geopackage+sqlite3" }), `${fileStem()}.gpkg`);
+    status("GeoPackage exported.");
+  } catch (err) {
+    status(`GeoPackage export failed: ${err.message}`);
+  } finally {
+    btn.textContent = label; btn.disabled = selected.size === 0;
+  }
+};
+
+loadParcels();
+render();
+</script>
+</body>
+</html>
