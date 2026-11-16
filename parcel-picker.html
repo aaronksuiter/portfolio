@@ -56,6 +56,8 @@
     text-shadow: 0 0 2px #000, 0 0 3px #000, 0 0 4px #000; white-space: normal; overflow-wrap: anywhere;
   }
   .owner-label.sel div { color: #ffe066; }
+  .name-field { display: block; margin-top: 10px; font-size: 12px; font-weight: 600; }
+  .name-field input { display: block; width: 100%; margin-top: 4px; font-weight: 400; }
   .toggle { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--muted); }
   .leaflet-popup-content table td:first-child { color: #666; padding-right: 8px; white-space: nowrap; }
   footer { padding: 8px 16px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
@@ -78,6 +80,9 @@
       <div class="big" id="acres">0.00 ac</div>
       <div class="sub" id="acres-sub">0 parcels selected · GIS area (calculated from shapes)</div>
       <div class="sub" id="deed-sub"></div>
+      <label class="name-field">Name <span class="sub" id="name-hint"></span>
+        <input id="name" type="text" placeholder="Select parcels to fill in the owner" autocomplete="off" disabled>
+      </label>
       <div class="row">
         <button class="primary" id="export-gpkg" disabled>Export .gpkg</button>
         <button id="export" disabled>GeoJSON</button>
@@ -197,6 +202,24 @@ function toggle(f, latlng) {
   renderLabels();
 }
 
+// ---------- Name field: auto-filled from the owner holding the most selected acreage, unless the user types their own ----------
+let nameEdited = false;
+function autoName(feats) {
+  const byOwner = new Map();
+  for (const f of feats) {
+    const o = f.properties.OWNERNME1;
+    if (!o || o === "NOT AVAILABLE") continue;
+    byOwner.set(o, (byOwner.get(o) || 0) + gisAcres(f));
+  }
+  if (!byOwner.size) return "";
+  return [...byOwner.entries()].sort((a, b) => b[1] - a[1])[0][0];
+}
+$("name").addEventListener("input", () => {
+  nameEdited = $("name").value.trim() !== "";
+  if (!nameEdited) $("name").value = autoName([...selected.values()]);
+  $("name-hint").textContent = nameEdited ? "· custom (clear it to use the owner name)" : "· from owner, edit to change";
+});
+
 function render() {
   const feats = [...selected.values()];
   const total = feats.reduce((s, f) => s + gisAcres(f), 0);
@@ -209,7 +232,9 @@ function render() {
     ? `On record: ${fmt(recTotal)} ac (${usedAssd ? "deeded, or assessed where no deeded value" : "deeded"})` +
       (recKnown.length < feats.length ? ` · ${feats.length - recKnown.length} parcel(s) have no recorded acreage` : "")
     : "";
-  $("export").disabled = $("export-gpkg").disabled = $("clear").disabled = feats.length === 0;
+  $("export").disabled = $("export-gpkg").disabled = $("clear").disabled = $("name").disabled = feats.length === 0;
+  if (!nameEdited) $("name").value = autoName(feats);
+  $("name-hint").textContent = !feats.length ? "" : nameEdited ? "· custom (clear it to use the owner name)" : "· from owner, edit to change";
   const list = $("list");
   list.innerHTML = feats.length ? "" : `<li class="empty">No parcels selected yet.</li>`;
   for (const f of feats) {
@@ -282,17 +307,43 @@ $("search").addEventListener("submit", async e => {
 
 $("clear").onclick = () => {
   selected.clear();
+  nameEdited = false;
   parcelLayer.eachLayer(l => l.setStyle(baseStyle));
   render();
   renderLabels();
 };
 
-const exportFeatures = () => [...selected.values()].map(f => ({
-  type: "Feature",
-  geometry: f.geometry,
-  properties: { ...f.properties, GIS_ACRES_CALC: Number(gisAcres(f).toFixed(4)) }
-}));
-const fileStem = () => `selected_parcels_${new Date().toISOString().slice(0, 10)}`;
+// Export = one feature: all selected parcels dissolved into a single (Multi)Polygon, with summary attributes.
+function exportFeatures() {
+  const feats = [...selected.values()];
+  let geom = null;
+  for (const f of feats) {
+    geom = geom ? turf.union(geom, f) : turf.feature(f.geometry);
+  }
+  if (geom.geometry.type === "Polygon") geom = turf.multiPolygon([geom.geometry.coordinates]);
+  const uniq = arr => [...new Set(arr.filter(v => v != null && v !== ""))];
+  const recKnown = feats.filter(f => recordedAcres(f.properties) != null);
+  const name = $("name").value.trim() || autoName(feats) || "Unnamed";
+  return [{
+    type: "Feature",
+    geometry: geom.geometry,
+    properties: {
+      NAME: name,
+      GIS_ACRES: Number((turf.area(geom) / SQM_PER_ACRE).toFixed(4)),
+      REC_ACRES: recKnown.length ? Number(recKnown.reduce((s, f) => s + recordedAcres(f.properties), 0).toFixed(4)) : null,
+      N_PARCELS: feats.length,
+      OWNERS: uniq(feats.map(f => f.properties.OWNERNME1)).join("; "),
+      PARCEL_IDS: uniq(feats.map(f => f.properties.PARCELID)).join("; "),
+      COUNTIES: uniq(feats.map(f => f.properties.CONAME)).join("; "),
+      TAX_YEAR: uniq(feats.map(f => f.properties.TAXROLLYEAR)).join("; "),
+      EXPORTED: new Date().toISOString().slice(0, 10)
+    }
+  }];
+}
+const fileStem = () => {
+  const slug = ($("name").value.trim() || "selected_parcels").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 60);
+  return slug || "selected_parcels";
+};
 
 function download(blob, name) {
   const a = document.createElement("a");
@@ -303,7 +354,7 @@ function download(blob, name) {
 }
 
 $("export").onclick = () => {
-  const fc = { type: "FeatureCollection", name: "selected_parcels",
+  const fc = { type: "FeatureCollection", name: "parcels",
     crs: { type: "name", properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" } }, features: exportFeatures() };
   download(new Blob([JSON.stringify(fc)], { type: "application/geo+json" }), `${fileStem()}.geojson`);
 };
@@ -312,7 +363,7 @@ $("export").onclick = () => {
 let sqlPromise;
 const loadSql = () => sqlPromise ??= initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}` });
 
-const NUMERIC_FIELDS = new Set(["GISACRES", "DEEDACRES", "ASSDACRES", "CNTASSDVALUE", "GIS_ACRES_CALC"]);
+const NUMERIC_FIELDS = new Set(["GIS_ACRES", "REC_ACRES", "N_PARCELS"]);
 const WGS84_WKT = 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]]';
 
 // GeoPackage geometry blob: "GP" header + envelope + little-endian WKB MultiPolygon.
@@ -348,7 +399,7 @@ function gpkgGeom(geometry, srsId) {
 async function buildGpkg(features) {
   const SQL = await loadSql();
   const db = new SQL.Database();
-  const table = "selected_parcels";
+  const table = "parcels";
   const fields = [...new Set(features.flatMap(f => Object.keys(f.properties)))];
   const q = s => `"${s.replace(/"/g, '""')}"`;
   db.run(`PRAGMA application_id = 1196444487; PRAGMA user_version = 10400;`);
@@ -369,7 +420,7 @@ async function buildGpkg(features) {
       ('Undefined geographic SRS', 0, 'NONE', 0, 'undefined', 'undefined geographic coordinate reference system');`);
   db.run(`INSERT INTO gpkg_spatial_ref_sys VALUES ('WGS 84 geodetic', 4326, 'EPSG', 4326, ?, 'longitude/latitude coordinates in decimal degrees on the WGS 84 spheroid')`, [WGS84_WKT]);
   db.run(`CREATE TABLE ${q(table)} (fid INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, geom MULTIPOLYGON, ${
-    fields.map(f => `${q(f)} ${NUMERIC_FIELDS.has(f) ? "REAL" : "TEXT"}`).join(", ")})`);
+    fields.map(f => `${q(f)} ${f === "N_PARCELS" ? "INTEGER" : NUMERIC_FIELDS.has(f) ? "REAL" : "TEXT"}`).join(", ")})`);
   const ins = db.prepare(`INSERT INTO ${q(table)} (geom, ${fields.map(q).join(", ")}) VALUES (?, ${fields.map(() => "?").join(", ")})`);
   let ext = [Infinity, -Infinity, Infinity, -Infinity];
   for (const f of features) {
@@ -383,7 +434,7 @@ async function buildGpkg(features) {
   }
   ins.free();
   db.run(`INSERT INTO gpkg_contents (table_name, data_type, identifier, description, min_x, min_y, max_x, max_y, srs_id)
-          VALUES (?, 'features', ?, 'Parcels selected in Parcel Picker', ?, ?, ?, ?, 4326)`,
+          VALUES (?, 'features', ?, 'Selected parcels, dissolved, from Parcel Picker', ?, ?, ?, ?, 4326)`,
          [table, table, ext[0], ext[2], ext[1], ext[3]]);
   db.run(`INSERT INTO gpkg_geometry_columns VALUES (?, 'geom', 'MULTIPOLYGON', 4326, 0, 0)`, [table]);
   const bytes = db.export();
