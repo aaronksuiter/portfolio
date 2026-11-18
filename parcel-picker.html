@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Parcel Picker</title>
+<title>Parcel Picker Deluxe</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
@@ -68,7 +68,7 @@
   <div id="map"></div>
   <aside id="side">
     <header>
-      <h1>Parcel Picker</h1>
+      <h1>Parcel Picker Deluxe <span class="sub" style="font-weight:400">v2 · Nov 18, 2026</span></h1>
       <form id="search">
         <input id="q" type="text" placeholder="Address, e.g. 210 Martin Luther King Jr Blvd, Madison" autocomplete="off">
         <button class="primary" type="submit">Go</button>
@@ -402,7 +402,7 @@ async function buildGpkg(features) {
   const table = "parcels";
   const fields = [...new Set(features.flatMap(f => Object.keys(f.properties)))];
   const q = s => `"${s.replace(/"/g, '""')}"`;
-  db.run(`PRAGMA application_id = 1196444487; PRAGMA user_version = 10400;`);
+  db.run(`PRAGMA application_id = 1196444487; PRAGMA user_version = 10200;`);
   db.run(`
     CREATE TABLE gpkg_spatial_ref_sys (srs_name TEXT NOT NULL, srs_id INTEGER PRIMARY KEY, organization TEXT NOT NULL,
       organization_coordsys_id INTEGER NOT NULL, definition TEXT NOT NULL, description TEXT);
